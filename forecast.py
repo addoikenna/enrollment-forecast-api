@@ -267,6 +267,9 @@ def forecast_next_6_months():
 
         prediction = ridge_model.predict(X_future)[0]
         prediction = max(0, prediction)
+        
+        # Convert forecast to whole number of people
+        prediction = int(np.floor(prediction))
 
         predictions.append(prediction)
 
