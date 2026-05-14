@@ -10,7 +10,6 @@ An AI-powered enrollment forecasting system built using:
 The system generates real-time 6-month enrollment forecasts based on historical enrollment and accepted application data.
 
 ---
-
 # Features
 
 - Monthly enrollment forecasting
@@ -21,7 +20,6 @@ The system generates real-time 6-month enrollment forecasts based on historical 
 - Ready for dashboard integration (Lovable)
 
 ---
-
 # Project Structure
 
 ```text
