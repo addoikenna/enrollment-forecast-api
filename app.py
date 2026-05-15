@@ -27,7 +27,7 @@ def health_check():
 
 @app.get("/forecast")
 def get_forecast():
-    forecast_df = forecast_next_6_months()
+    forecast_df = forecast_next_12_months()
 
     forecast_df["month"] = forecast_df["month"].astype(str)
 
