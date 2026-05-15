@@ -35,21 +35,15 @@ def google_sheet_csv_url(sheet_id, gid):
 
 def convert_month_column(value):
     """
-    Converts either:
-    - Excel serial dates
-    - normal date strings
-
-    into pandas datetime.
+    Converts either Excel serial dates or date strings into pandas datetime.
     """
 
     if pd.isna(value):
         return pd.NaT
 
-    # If value is numeric or numeric string
     try:
         numeric_value = float(value)
 
-        # Excel serial dates are usually large numbers
         if numeric_value > 10000:
             return (
                 pd.to_datetime("1899-12-30")
@@ -58,7 +52,6 @@ def convert_month_column(value):
     except Exception:
         pass
 
-    # Otherwise treat as normal date string
     return pd.to_datetime(value)
 
 
@@ -162,14 +155,27 @@ def load_live_data():
 # Forecast function
 # ---------------------------------------
 
-def forecast_next_6_months():
+def forecast_next_months(periods=12):
+    """
+    Generate recursive enrollment forecasts for the next N months.
+
+    Default:
+    - 12 months
+
+    The function:
+    - loads latest live data
+    - creates model features for each future month
+    - predicts recursively
+    - returns forecast dataframe
+    """
+
     forecast_df = load_live_data()
 
     predictions = []
 
     future_months = pd.date_range(
         start=forecast_df["month"].max() + pd.offsets.MonthBegin(1),
-        periods=6,
+        periods=periods,
         freq="MS"
     )
 
@@ -267,8 +273,8 @@ def forecast_next_6_months():
 
         prediction = ridge_model.predict(X_future)[0]
         prediction = max(0, prediction)
-        
-        # Convert forecast to whole number of people
+
+        # Enrollment is a count, so return whole number
         prediction = int(np.floor(prediction))
 
         predictions.append(prediction)
@@ -296,9 +302,21 @@ def forecast_next_6_months():
 
 
 # ---------------------------------------
+# Convenience wrappers
+# ---------------------------------------
+
+def forecast_next_6_months():
+    return forecast_next_months(periods=6)
+
+
+def forecast_next_12_months():
+    return forecast_next_months(periods=12)
+
+
+# ---------------------------------------
 # Local test
 # ---------------------------------------
 
 if __name__ == "__main__":
-    forecast = forecast_next_6_months()
+    forecast = forecast_next_12_months()
     print(forecast)
