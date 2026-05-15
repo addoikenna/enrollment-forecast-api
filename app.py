@@ -1,11 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from forecast import forecast_next_12_months
+
+from forecast import (
+    forecast_next_6_months,
+    get_current_year_projection
+)
+
 
 app = FastAPI(
     title="Enrollment Forecast API",
     version="1.0"
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,13 +32,14 @@ def health_check():
 
 @app.get("/forecast")
 def get_forecast():
-    forecast_df = forecast_next_12_months()
+    forecast_df = forecast_next_6_months()
 
     forecast_df["month"] = forecast_df["month"].astype(str)
 
     return {
-        "forecast_horizon": "next_12_months",
-        "data": forecast_df.to_dict(orient="records")
+        "forecast_horizon": "next_6_months",
+        "data": forecast_df.to_dict(orient="records"),
+        "year_projection": get_current_year_projection()
     }
 
 
@@ -40,7 +47,8 @@ def get_forecast():
 def model_info():
     return {
         "model": "Ridge Regression",
-        "forecast_type": "12-month enrollment forecast",
+        "forecast_type": "rolling 6-month enrollment forecast",
+        "additional_output": "current year projected enrollment",
         "features": [
             "month_sin",
             "month_cos",
