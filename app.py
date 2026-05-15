@@ -1,13 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from forecast import forecast_next_6_months
+from forecast import forecast_next_12_months
 
 app = FastAPI(
     title="Enrollment Forecast API",
     version="1.0"
 )
 
-# Allow frontend apps like Lovable to call this API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,7 +31,7 @@ def get_forecast():
     forecast_df["month"] = forecast_df["month"].astype(str)
 
     return {
-        "forecast_horizon": "next_6_months",
+        "forecast_horizon": "next_12_months",
         "data": forecast_df.to_dict(orient="records")
     }
 
@@ -41,7 +40,7 @@ def get_forecast():
 def model_info():
     return {
         "model": "Ridge Regression",
-        "forecast_type": "6-month enrollment forecast",
+        "forecast_type": "12-month enrollment forecast",
         "features": [
             "month_sin",
             "month_cos",
