@@ -34,10 +34,6 @@ def google_sheet_csv_url(sheet_id, gid):
 
 
 def convert_month_column(value):
-    """
-    Converts either Excel serial dates or date strings into pandas datetime.
-    """
-
     if pd.isna(value):
         return pd.NaT
 
@@ -57,26 +53,22 @@ def convert_month_column(value):
 
 def create_cohort_stage(month):
     stage_mapping = {
-        # January cohort: Oct → Jan
-        10: 1,
-        11: 2,
-        12: 3,
-        1: 4,
-
-        # May cohort: Feb → May
-        2: 1,
-        3: 2,
-        4: 3,
-        5: 4,
-
-        # September cohort: Jun → Sep
-        6: 1,
-        7: 2,
-        8: 3,
-        9: 4,
+        10: 1, 11: 2, 12: 3, 1: 4,
+        2: 1, 3: 2, 4: 3, 5: 4,
+        6: 1, 7: 2, 8: 3, 9: 4,
     }
 
     return stage_mapping[month]
+
+
+def format_period(start_month, end_month):
+    if start_month is None or end_month is None:
+        return "None"
+
+    return (
+        f"{pd.Timestamp(start_month).strftime('%b %Y')} - "
+        f"{pd.Timestamp(end_month).strftime('%b %Y')}"
+    )
 
 
 # ---------------------------------------
@@ -97,11 +89,9 @@ def load_live_data():
     enroll_df = pd.read_csv(enrollment_url)
     apps_df = pd.read_csv(applications_url)
 
-    # Standardize column names
     enroll_df.columns = enroll_df.columns.str.strip().str.lower()
     apps_df.columns = apps_df.columns.str.strip().str.lower()
 
-    # Rename month columns
     enroll_df = enroll_df.rename(columns={
         "enrolment_month": "month",
         "enrollment_month": "month",
@@ -111,11 +101,9 @@ def load_live_data():
         "app_month": "month",
     })
 
-    # Convert month columns
     enroll_df["month"] = enroll_df["month"].apply(convert_month_column)
     apps_df["month"] = apps_df["month"].apply(convert_month_column)
 
-    # Keep required columns
     enroll_df = enroll_df[[
         "month",
         "enrolments",
@@ -128,7 +116,6 @@ def load_live_data():
         "applications_accepted"
     ]]
 
-    # Merge datasets
     df = pd.merge(
         enroll_df,
         apps_df,
@@ -136,15 +123,12 @@ def load_live_data():
         how="inner"
     )
 
-    # Standard spelling
     df = df.rename(columns={
         "enrolments": "enrollments"
     })
 
-    # Sort chronologically
     df = df.sort_values("month").reset_index(drop=True)
 
-    # Remove launch month distortion
     df = df[df["month"] != pd.Timestamp("2023-05-01")]
     df = df.reset_index(drop=True)
 
@@ -155,22 +139,8 @@ def load_live_data():
 # Forecast function
 # ---------------------------------------
 
-def forecast_next_months(periods=12):
-    """
-    Generate recursive enrollment forecasts for the next N months.
-
-    Default:
-    - 12 months
-
-    The function:
-    - loads latest live data
-    - creates model features for each future month
-    - predicts recursively
-    - returns forecast dataframe
-    """
-
+def forecast_next_months(periods=6):
     forecast_df = load_live_data()
-
     predictions = []
 
     future_months = pd.date_range(
@@ -181,52 +151,17 @@ def forecast_next_months(periods=12):
 
     for future_month in future_months:
         month_number = future_month.month
-
         row = {}
 
-        # -------------------------------
-        # Seasonal features
-        # -------------------------------
+        row["month_sin"] = np.sin(2 * np.pi * month_number / 12)
+        row["month_cos"] = np.cos(2 * np.pi * month_number / 12)
 
-        row["month_sin"] = np.sin(
-            2 * np.pi * month_number / 12
-        )
+        row["is_cohort_close_month"] = int(month_number in [1, 5, 9])
+        row["cohort_stage"] = create_cohort_stage(month_number)
 
-        row["month_cos"] = np.cos(
-            2 * np.pi * month_number / 12
-        )
-
-        # -------------------------------
-        # Cohort features
-        # -------------------------------
-
-        row["is_cohort_close_month"] = int(
-            month_number in [1, 5, 9]
-        )
-
-        row["cohort_stage"] = create_cohort_stage(
-            month_number
-        )
-
-        # -------------------------------
-        # Lagged enrollment features
-        # -------------------------------
-
-        row["enrollments_lag_1"] = (
-            forecast_df["enrollments"].iloc[-1]
-        )
-
-        row["enrollments_lag_2"] = (
-            forecast_df["enrollments"].iloc[-2]
-        )
-
-        row["enrollments_lag_12"] = (
-            forecast_df["enrollments"].iloc[-12]
-        )
-
-        # -------------------------------
-        # Lagged application features
-        # -------------------------------
+        row["enrollments_lag_1"] = forecast_df["enrollments"].iloc[-1]
+        row["enrollments_lag_2"] = forecast_df["enrollments"].iloc[-2]
+        row["enrollments_lag_12"] = forecast_df["enrollments"].iloc[-12]
 
         row["apps_accepted_lag_1"] = (
             forecast_df["applications_accepted"].iloc[-1]
@@ -237,14 +172,8 @@ def forecast_next_months(periods=12):
         )
 
         row["apps_accepted_roll_3"] = (
-            forecast_df["applications_accepted"]
-            .iloc[-3:]
-            .mean()
+            forecast_df["applications_accepted"].iloc[-3:].mean()
         )
-
-        # -------------------------------
-        # Optional features
-        # -------------------------------
 
         if "days_in_month" in features:
             row["days_in_month"] = future_month.days_in_month
@@ -254,9 +183,7 @@ def forecast_next_months(periods=12):
 
         if "enrollments_roll_3" in features:
             row["enrollments_roll_3"] = (
-                forecast_df["enrollments"]
-                .iloc[-3:]
-                .mean()
+                forecast_df["enrollments"].iloc[-3:].mean()
             )
 
         if "conversion_rate_lag_1" in features:
@@ -265,26 +192,15 @@ def forecast_next_months(periods=12):
                 / forecast_df["applications_accepted"].iloc[-1]
             )
 
-        # -------------------------------
-        # Predict
-        # -------------------------------
-
         X_future = pd.DataFrame([row])[features]
 
         prediction = ridge_model.predict(X_future)[0]
         prediction = max(0, prediction)
-
-        # Enrollment is a count, so return whole number
         prediction = int(np.floor(prediction))
 
         predictions.append(prediction)
 
-        # -------------------------------
-        # Recursive update
-        # -------------------------------
-
         new_row = forecast_df.iloc[-1].copy()
-
         new_row["month"] = future_month
         new_row["enrollments"] = prediction
 
@@ -301,10 +217,6 @@ def forecast_next_months(periods=12):
     return forecast_output
 
 
-# ---------------------------------------
-# Convenience wrappers
-# ---------------------------------------
-
 def forecast_next_6_months():
     return forecast_next_months(periods=6)
 
@@ -314,9 +226,82 @@ def forecast_next_12_months():
 
 
 # ---------------------------------------
+# Current-year projection
+# ---------------------------------------
+
+def get_current_year_projection():
+    """
+    Current year logic:
+    - Actuals: Jan to previous month
+    - Forecast: current month to Dec
+    """
+
+    df = load_live_data()
+
+    today = pd.Timestamp.today()
+    current_year = today.year
+    current_month = today.month
+
+    actual_df = df[
+        (df["month"].dt.year == current_year)
+        & (df["month"].dt.month < current_month)
+    ]
+
+    actual_closed_months_total = int(actual_df["enrollments"].sum())
+    actual_months_count = int(len(actual_df))
+
+    months_remaining = 12 - current_month + 1
+
+    forecast_df = forecast_next_months(periods=months_remaining)
+
+    forecast_df = forecast_df[
+        forecast_df["month"].dt.year == current_year
+    ]
+
+    forecast_remaining_months_total = int(
+        forecast_df["forecasted_enrollments"].sum()
+    )
+
+    forecast_months_count = int(len(forecast_df))
+
+    projected_year_total = (
+        actual_closed_months_total
+        + forecast_remaining_months_total
+    )
+
+    if actual_months_count > 0:
+        actual_start = actual_df["month"].min()
+        actual_end = actual_df["month"].max()
+    else:
+        actual_start = None
+        actual_end = None
+
+    if forecast_months_count > 0:
+        forecast_start = forecast_df["month"].min()
+        forecast_end = forecast_df["month"].max()
+    else:
+        forecast_start = None
+        forecast_end = None
+
+    return {
+        "year": int(current_year),
+        "actual_closed_months_total": actual_closed_months_total,
+        "forecast_remaining_months_total": forecast_remaining_months_total,
+        "projected_year_total": int(projected_year_total),
+        "actual_months_count": actual_months_count,
+        "forecast_months_count": forecast_months_count,
+        "actual_period": format_period(actual_start, actual_end),
+        "forecast_period": format_period(forecast_start, forecast_end),
+    }
+
+
+# ---------------------------------------
 # Local test
 # ---------------------------------------
 
 if __name__ == "__main__":
-    forecast = forecast_next_12_months()
-    print(forecast)
+    print("Rolling 6-month forecast:")
+    print(forecast_next_6_months())
+
+    print("\nCurrent-year projection:")
+    print(get_current_year_projection())
