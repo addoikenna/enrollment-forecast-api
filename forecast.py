@@ -20,6 +20,7 @@ APPLICATIONS_SHEET_ID = "1ry6T6I0qHbme3Bb1yVTSZyop9Cn1ictFU93V-lOlrfo"
 
 ENROLLMENT_GID = "1781196956"
 APPLICATIONS_GID = "3304352"
+DAILY_ENROLLMENT_GID = "604024081"
 
 
 # ---------------------------------------
@@ -71,8 +72,12 @@ def format_period(start_month, end_month):
     )
 
 
+def to_records(df):
+    return df.to_dict(orient="records")
+
+
 # ---------------------------------------
-# Load live Google Sheet data
+# Load live monthly Google Sheet data
 # ---------------------------------------
 
 def load_live_data():
@@ -129,6 +134,7 @@ def load_live_data():
 
     df = df.sort_values("month").reset_index(drop=True)
 
+    # Remove launch month distortion
     df = df[df["month"] != pd.Timestamp("2023-05-01")]
     df = df.reset_index(drop=True)
 
@@ -136,7 +142,38 @@ def load_live_data():
 
 
 # ---------------------------------------
-# Forecast function
+# Load live daily enrollment data
+# ---------------------------------------
+
+def load_daily_enrollment_data():
+    daily_url = google_sheet_csv_url(
+        ENROLLMENT_SHEET_ID,
+        DAILY_ENROLLMENT_GID
+    )
+
+    daily_df = pd.read_csv(daily_url)
+
+    daily_df.columns = daily_df.columns.str.strip().str.lower()
+
+    daily_df = daily_df.rename(columns={
+        "enrolment_date": "date",
+        "daily_enrolments": "enrollments"
+    })
+
+    daily_df["date"] = daily_df["date"].apply(convert_month_column)
+
+    daily_df = daily_df[[
+        "date",
+        "enrollments"
+    ]]
+
+    daily_df = daily_df.sort_values("date").reset_index(drop=True)
+
+    return daily_df
+
+
+# ---------------------------------------
+# Monthly forecast functions
 # ---------------------------------------
 
 def forecast_next_months(periods=6):
@@ -230,12 +267,6 @@ def forecast_next_12_months():
 # ---------------------------------------
 
 def get_current_year_projection():
-    """
-    Current year logic:
-    - Actuals: Jan to previous month
-    - Forecast: current month to Dec
-    """
-
     df = load_live_data()
 
     today = pd.Timestamp.today()
@@ -296,6 +327,256 @@ def get_current_year_projection():
 
 
 # ---------------------------------------
+# Daily weight profile
+# ---------------------------------------
+
+def build_daily_day_weight_profile():
+    daily_df = load_daily_enrollment_data()
+
+    daily_df["month_period"] = daily_df["date"].dt.to_period("M").astype(str)
+    daily_df["day"] = daily_df["date"].dt.day
+    daily_df["month"] = daily_df["date"].dt.month
+
+    daily_df["is_cohort_close_month"] = daily_df["month"].isin([1, 5, 9])
+
+    daily_df["month_type"] = np.where(
+        daily_df["is_cohort_close_month"],
+        "Cohort Close Month",
+        "Normal Month"
+    )
+
+    monthly_totals = (
+        daily_df
+        .groupby("month_period")["enrollments"]
+        .sum()
+        .reset_index()
+        .rename(columns={"enrollments": "monthly_total"})
+    )
+
+    daily_df = daily_df.merge(
+        monthly_totals,
+        on="month_period",
+        how="left"
+    )
+
+    daily_df["daily_weight"] = (
+        daily_df["enrollments"] / daily_df["monthly_total"]
+    )
+
+    daily_day_weight_profile = (
+        daily_df
+        .groupby(["month_type", "day"])["daily_weight"]
+        .mean()
+        .reset_index()
+    )
+
+    daily_day_weight_profile["normalized_weight"] = (
+        daily_day_weight_profile
+        .groupby("month_type")["daily_weight"]
+        .transform(lambda x: x / x.sum())
+    )
+
+    return daily_day_weight_profile
+
+
+# ---------------------------------------
+# Daily forecast allocation engine
+# ---------------------------------------
+
+def create_daily_forecast_allocation(
+    forecast_month,
+    monthly_forecast,
+    daily_day_weight_profile
+):
+    forecast_month = pd.Timestamp(forecast_month)
+
+    if forecast_month.month in [1, 5, 9]:
+        forecast_month_type = "Cohort Close Month"
+    else:
+        forecast_month_type = "Normal Month"
+
+    forecast_dates = pd.date_range(
+        start=forecast_month,
+        end=forecast_month + pd.offsets.MonthEnd(0),
+        freq="D"
+    )
+
+    daily_forecast_df = pd.DataFrame({
+        "date": forecast_dates
+    })
+
+    daily_forecast_df["day"] = daily_forecast_df["date"].dt.day
+
+    month_weights = daily_day_weight_profile[
+        daily_day_weight_profile["month_type"] == forecast_month_type
+    ][["day", "normalized_weight"]]
+
+    daily_forecast_df = daily_forecast_df.merge(
+        month_weights,
+        on="day",
+        how="left"
+    )
+
+    daily_forecast_df["normalized_weight"] = (
+        daily_forecast_df["normalized_weight"].fillna(0)
+    )
+
+    daily_forecast_df["normalized_weight"] = (
+        daily_forecast_df["normalized_weight"]
+        / daily_forecast_df["normalized_weight"].sum()
+    )
+
+    daily_forecast_df["forecasted_enrollments"] = (
+        monthly_forecast * daily_forecast_df["normalized_weight"]
+    )
+
+    daily_forecast_df["forecasted_enrollments"] = (
+        daily_forecast_df["forecasted_enrollments"]
+        .round()
+        .astype(int)
+    )
+
+    difference = (
+        monthly_forecast
+        - daily_forecast_df["forecasted_enrollments"].sum()
+    )
+
+    daily_forecast_df.loc[
+        daily_forecast_df.index[-1],
+        "forecasted_enrollments"
+    ] += difference
+
+    daily_forecast_df["month"] = forecast_month
+    daily_forecast_df["month_type"] = forecast_month_type
+
+    daily_forecast_df["week_start"] = (
+        daily_forecast_df["date"]
+        - pd.to_timedelta(daily_forecast_df["date"].dt.weekday, unit="D")
+    )
+
+    return daily_forecast_df
+
+
+# ---------------------------------------
+# Daily pace tracking
+# ---------------------------------------
+
+def get_daily_pace():
+    monthly_forecast_df = forecast_next_6_months()
+
+    current_month = pd.Timestamp(
+        monthly_forecast_df["month"].iloc[0]
+    )
+
+    monthly_forecast = int(
+        monthly_forecast_df["forecasted_enrollments"].iloc[0]
+    )
+
+    daily_day_weight_profile = build_daily_day_weight_profile()
+
+    forecast_daily = create_daily_forecast_allocation(
+        forecast_month=current_month,
+        monthly_forecast=monthly_forecast,
+        daily_day_weight_profile=daily_day_weight_profile
+    )
+
+    actual_daily = load_daily_enrollment_data()
+
+    actual_current_month = actual_daily[
+        actual_daily["date"].dt.to_period("M")
+        == current_month.to_period("M")
+    ].copy()
+
+    pace_df = forecast_daily.merge(
+        actual_current_month[["date", "enrollments"]],
+        on="date",
+        how="left"
+    )
+
+    pace_df = pace_df.rename(columns={
+        "enrollments": "actual_enrollments"
+    })
+
+    pace_df["actual_enrollments"] = (
+        pace_df["actual_enrollments"].fillna(0).astype(int)
+    )
+
+    pace_df["cumulative_forecast"] = (
+        pace_df["forecasted_enrollments"].cumsum()
+    )
+
+    pace_df["cumulative_actual"] = (
+        pace_df["actual_enrollments"].cumsum()
+    )
+
+    latest_actual_date = actual_current_month["date"].max()
+
+    if pd.isna(latest_actual_date):
+        latest_actual_date = current_month - pd.Timedelta(days=1)
+
+    today_df = pace_df[
+        pace_df["date"] <= latest_actual_date
+    ]
+
+    actual_to_date = int(today_df["actual_enrollments"].sum())
+    expected_to_date = int(today_df["forecasted_enrollments"].sum())
+
+    pace_variance = actual_to_date - expected_to_date
+
+    if expected_to_date > 0:
+        pace_achievement_pct = round(
+            (actual_to_date / expected_to_date) * 100,
+            2
+        )
+    else:
+        pace_achievement_pct = 0
+
+    remaining_target = monthly_forecast - actual_to_date
+
+    days_remaining = int(
+        (forecast_daily["date"].max() - latest_actual_date).days
+    )
+
+    if days_remaining > 0:
+        required_daily_pace = round(
+            remaining_target / days_remaining,
+            2
+        )
+    else:
+        required_daily_pace = 0
+
+    weekly_forecast = (
+        forecast_daily
+        .groupby("week_start")["forecasted_enrollments"]
+        .sum()
+        .reset_index()
+    )
+
+    pace_df["date"] = pace_df["date"].astype(str)
+    pace_df["month"] = pace_df["month"].astype(str)
+    pace_df["week_start"] = pace_df["week_start"].astype(str)
+
+    weekly_forecast["week_start"] = (
+        weekly_forecast["week_start"].astype(str)
+    )
+
+    return {
+        "month": str(current_month.date()),
+        "monthly_forecast": monthly_forecast,
+        "latest_actual_date": str(latest_actual_date.date()),
+        "actual_to_date": actual_to_date,
+        "expected_to_date": expected_to_date,
+        "pace_variance": int(pace_variance),
+        "pace_achievement_pct": pace_achievement_pct,
+        "remaining_target": int(remaining_target),
+        "days_remaining": days_remaining,
+        "required_daily_pace": required_daily_pace,
+        "daily_data": to_records(pace_df),
+        "weekly_forecast": to_records(weekly_forecast)
+    }
+
+
+# ---------------------------------------
 # Local test
 # ---------------------------------------
 
@@ -305,3 +586,6 @@ if __name__ == "__main__":
 
     print("\nCurrent-year projection:")
     print(get_current_year_projection())
+
+    print("\nDaily pace:")
+    print(get_daily_pace())
