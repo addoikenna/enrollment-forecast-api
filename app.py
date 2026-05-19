@@ -3,13 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from forecast import (
     forecast_next_6_months,
-    get_current_year_projection
+    get_current_year_projection,
+    get_daily_pace
 )
 
 
 app = FastAPI(
     title="Enrollment Forecast API",
-    version="1.0"
+    version="1.1"
 )
 
 
@@ -43,12 +44,21 @@ def get_forecast():
     }
 
 
+@app.get("/daily-pace")
+def daily_pace():
+    return get_daily_pace()
+
+
 @app.get("/model-info")
 def model_info():
     return {
         "model": "Ridge Regression",
         "forecast_type": "rolling 6-month enrollment forecast",
-        "additional_output": "current year projected enrollment",
+        "additional_outputs": [
+            "current year projected enrollment",
+            "daily enrollment pace tracking",
+            "weekly forecast rollup"
+        ],
         "features": [
             "month_sin",
             "month_cos",
