@@ -4,7 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from forecast import (
     forecast_next_6_months,
     get_current_year_projection,
-    get_daily_pace
+    get_daily_pace,
+    save_daily_forecast_history
 )
 
 
@@ -68,3 +69,8 @@ def model_info():
             "lagged accepted applications"
         ]
     }
+    
+
+@app.get("/save-daily-forecast")
+def save_daily_forecast():
+    return save_daily_forecast_history()
