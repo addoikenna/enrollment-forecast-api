@@ -557,6 +557,8 @@ def get_daily_pace(month=None):
             daily_day_weight_profile=daily_day_weight_profile
         )
 
+        forecast_daily = forecast_daily.sort_values("date").reset_index(drop=True)
+
     else:
         history_df = load_forecast_history()
 
@@ -585,12 +587,20 @@ def get_daily_pace(month=None):
             - pd.to_timedelta(forecast_daily["date"].dt.weekday, unit="D")
         )
 
+        forecast_daily = forecast_daily.sort_values("date").reset_index(drop=True)
+
     actual_daily = load_daily_enrollment_data()
 
     actual_current_month = actual_daily[
         actual_daily["date"].dt.to_period("M")
         == current_month.to_period("M")
     ].copy()
+
+    actual_current_month = (
+        actual_current_month
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
 
     pace_df = forecast_daily.merge(
         actual_current_month[["date", "enrollments"]],
@@ -602,16 +612,28 @@ def get_daily_pace(month=None):
         "enrollments": "actual_enrollments"
     })
 
+    # IMPORTANT: sort before cumulative calculations
+    pace_df = pace_df.sort_values("date").reset_index(drop=True)
+
     pace_df["actual_enrollments"] = (
-        pace_df["actual_enrollments"].fillna(0).astype(int)
+        pace_df["actual_enrollments"]
+        .fillna(0)
+        .astype(int)
     )
 
     pace_df["cumulative_forecast"] = (
-        pace_df["forecasted_enrollments"].cumsum()
+        pace_df["forecasted_enrollments"]
+        .cumsum()
     )
 
     pace_df["cumulative_actual"] = (
-        pace_df["actual_enrollments"].cumsum()
+        pace_df["actual_enrollments"]
+        .cumsum()
+    )
+
+    pace_df["pace_variance"] = (
+        pace_df["cumulative_actual"]
+        - pace_df["cumulative_forecast"]
     )
 
     latest_actual_date = actual_current_month["date"].max()
@@ -655,6 +677,8 @@ def get_daily_pace(month=None):
         .groupby("week_start")["forecasted_enrollments"]
         .sum()
         .reset_index()
+        .sort_values("week_start")
+        .reset_index(drop=True)
     )
 
     pace_df["date"] = pace_df["date"].astype(str)
@@ -679,7 +703,6 @@ def get_daily_pace(month=None):
         "daily_data": to_records(pace_df),
         "weekly_forecast": to_records(weekly_forecast)
     }
-
 
 # ---------------------------------------
 # Save daily forecast history
