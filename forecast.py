@@ -18,6 +18,8 @@ features = joblib.load("models/ridge_model_features.pkl")
 
 ENROLLMENT_SHEET_ID = "1bkUlCdL0VpCy-2Gm17MfTlC2lbv-qQoNQbasN2cGniw"
 APPLICATIONS_SHEET_ID = "1ry6T6I0qHbme3Bb1yVTSZyop9Cn1ictFU93V-lOlrfo"
+FORECAST_HISTORY_SHEET_ID = "1Fd2rBfeyLwzweNOFLMXjOTqhDzqdm1wmDdP2bD4cJo4"
+
 FORECAST_HISTORY_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyueag5B7rLm6zxy2g88olVH8R_ftGI9ZEAKBJ_mmnJFLRSXY5nnQbYm229QDLmgKT4jg/exec"
 
 MODEL_VERSION = "Ridge_v1"
@@ -25,6 +27,7 @@ MODEL_VERSION = "Ridge_v1"
 ENROLLMENT_GID = "1781196956"
 APPLICATIONS_GID = "3304352"
 DAILY_ENROLLMENT_GID = "604024081"
+FORECAST_HISTORY_GID = "0"
 
 
 # ---------------------------------------
@@ -175,6 +178,33 @@ def load_daily_enrollment_data():
 
     return daily_df
 
+# ---------------------------------------
+# Load forecast history
+# ---------------------------------------
+
+def load_forecast_history():
+    history_url = google_sheet_csv_url(
+        FORECAST_HISTORY_SHEET_ID,
+        FORECAST_HISTORY_GID
+    )
+
+    history_df = pd.read_csv(history_url)
+
+    history_df.columns = history_df.columns.str.strip().str.lower()
+
+    history_df["snapshot_date"] = pd.to_datetime(history_df["snapshot_date"])
+    history_df["forecast_month"] = pd.to_datetime(history_df["forecast_month"])
+    history_df["forecast_date"] = pd.to_datetime(history_df["forecast_date"])
+
+    history_df["forecasted_enrollments"] = (
+        history_df["forecasted_enrollments"].astype(int)
+    )
+
+    history_df["monthly_forecast"] = (
+        history_df["monthly_forecast"].astype(int)
+    )
+
+    return history_df
 
 # ---------------------------------------
 # Monthly forecast functions
@@ -617,6 +647,32 @@ def save_daily_forecast_history():
         "rows_sent": len(rows),
         "forecast_month": pace_data["month"],
         "snapshot_date": snapshot_date
+    }
+    
+
+# ---------------------------------------
+# Get forecast history months
+# ---------------------------------------
+
+def get_forecast_history_months():
+    history_df = load_forecast_history()
+
+    history_df["month_key"] = (
+        history_df["forecast_month"]
+        .dt.to_period("M")
+        .astype(str)
+    )
+
+    months = (
+        history_df["month_key"]
+        .dropna()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
+
+    return {
+        "months": months
     }
 
 
