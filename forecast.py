@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import joblib
+import requests
 
 
 # ---------------------------------------
@@ -17,6 +18,9 @@ features = joblib.load("models/ridge_model_features.pkl")
 
 ENROLLMENT_SHEET_ID = "1bkUlCdL0VpCy-2Gm17MfTlC2lbv-qQoNQbasN2cGniw"
 APPLICATIONS_SHEET_ID = "1ry6T6I0qHbme3Bb1yVTSZyop9Cn1ictFU93V-lOlrfo"
+FORECAST_HISTORY_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyueag5B7rLm6zxy2g88olVH8R_ftGI9ZEAKBJ_mmnJFLRSXY5nnQbYm229QDLmgKT4jg/exec"
+
+MODEL_VERSION = "Ridge_v1"
 
 ENROLLMENT_GID = "1781196956"
 APPLICATIONS_GID = "3304352"
@@ -573,6 +577,46 @@ def get_daily_pace():
         "required_daily_pace": required_daily_pace,
         "daily_data": to_records(pace_df),
         "weekly_forecast": to_records(weekly_forecast)
+    }
+
+# ---------------------------------------
+# Save daily forecast history
+# ---------------------------------------
+    
+def save_daily_forecast_history():
+    pace_data = get_daily_pace()
+
+    snapshot_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+
+    rows = []
+
+    for row in pace_data["daily_data"]:
+        rows.append({
+            "snapshot_date": snapshot_date,
+            "forecast_month": pace_data["month"],
+            "forecast_date": row["date"],
+            "forecasted_enrollments": row["forecasted_enrollments"],
+            "month_type": row["month_type"],
+            "monthly_forecast": pace_data["monthly_forecast"],
+            "model_version": MODEL_VERSION
+        })
+
+    payload = {
+        "rows": rows
+    }
+
+    response = requests.post(
+        FORECAST_HISTORY_WEB_APP_URL,
+        json=payload,
+        timeout=30
+    )
+
+    return {
+        "status_code": response.status_code,
+        "response": response.text,
+        "rows_sent": len(rows),
+        "forecast_month": pace_data["month"],
+        "snapshot_date": snapshot_date
     }
 
 
