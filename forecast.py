@@ -13,21 +13,24 @@ features = joblib.load("models/ridge_model_features.pkl")
 
 
 # ---------------------------------------
-# Google Sheet IDs and GIDs
+# Google Sheet IDs, GIDs, and URLs
 # ---------------------------------------
 
 ENROLLMENT_SHEET_ID = "1bkUlCdL0VpCy-2Gm17MfTlC2lbv-qQoNQbasN2cGniw"
 APPLICATIONS_SHEET_ID = "1ry6T6I0qHbme3Bb1yVTSZyop9Cn1ictFU93V-lOlrfo"
 FORECAST_HISTORY_SHEET_ID = "1Fd2rBfeyLwzweNOFLMXjOTqhDzqdm1wmDdP2bD4cJo4"
 
-FORECAST_HISTORY_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyueag5B7rLm6zxy2g88olVH8R_ftGI9ZEAKBJ_mmnJFLRSXY5nnQbYm229QDLmgKT4jg/exec"
-
-MODEL_VERSION = "Ridge_v1"
-
 ENROLLMENT_GID = "1781196956"
 APPLICATIONS_GID = "3304352"
 DAILY_ENROLLMENT_GID = "604024081"
 FORECAST_HISTORY_GID = "0"
+
+FORECAST_HISTORY_WEB_APP_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbyueag5B7rLm6zxy2g88olVH8R_ftGI9ZEAKBJ_mmnJFLRSXY5nnQbYm229QDLmgKT4jg/exec"
+)
+
+MODEL_VERSION = "Ridge_v1"
 
 
 # ---------------------------------------
@@ -178,6 +181,7 @@ def load_daily_enrollment_data():
 
     return daily_df
 
+
 # ---------------------------------------
 # Load forecast history
 # ---------------------------------------
@@ -205,6 +209,7 @@ def load_forecast_history():
     )
 
     return history_df
+
 
 # ---------------------------------------
 # Monthly forecast functions
@@ -492,27 +497,81 @@ def create_daily_forecast_allocation(
 
 
 # ---------------------------------------
+# Forecast history months
+# ---------------------------------------
+
+def get_forecast_history_months():
+    history_df = load_forecast_history()
+
+    history_df["month_key"] = (
+        history_df["forecast_month"]
+        .dt.to_period("M")
+        .astype(str)
+    )
+
+    months = (
+        history_df["month_key"]
+        .dropna()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
+
+    return {
+        "months": months
+    }
+
+
+# ---------------------------------------
 # Daily pace tracking
 # ---------------------------------------
 
-def get_daily_pace():
-    monthly_forecast_df = forecast_next_6_months()
+def get_daily_pace(month=None):
 
-    current_month = pd.Timestamp(
-        monthly_forecast_df["month"].iloc[0]
-    )
+    if month is None:
+        monthly_forecast_df = forecast_next_6_months()
 
-    monthly_forecast = int(
-        monthly_forecast_df["forecasted_enrollments"].iloc[0]
-    )
+        current_month = pd.Timestamp(
+            monthly_forecast_df["month"].iloc[0]
+        )
 
-    daily_day_weight_profile = build_daily_day_weight_profile()
+        monthly_forecast = int(
+            monthly_forecast_df["forecasted_enrollments"].iloc[0]
+        )
 
-    forecast_daily = create_daily_forecast_allocation(
-        forecast_month=current_month,
-        monthly_forecast=monthly_forecast,
-        daily_day_weight_profile=daily_day_weight_profile
-    )
+        daily_day_weight_profile = build_daily_day_weight_profile()
+
+        forecast_daily = create_daily_forecast_allocation(
+            forecast_month=current_month,
+            monthly_forecast=monthly_forecast,
+            daily_day_weight_profile=daily_day_weight_profile
+        )
+
+    else:
+        history_df = load_forecast_history()
+
+        current_month = pd.Timestamp(month)
+
+        forecast_daily = history_df[
+            history_df["forecast_month"].dt.to_period("M")
+            == current_month.to_period("M")
+        ].copy()
+
+        if len(forecast_daily) == 0:
+            raise ValueError(f"No forecast history found for {month}")
+
+        monthly_forecast = int(
+            forecast_daily["monthly_forecast"].iloc[0]
+        )
+
+        forecast_daily = forecast_daily.rename(columns={
+            "forecast_date": "date"
+        })
+
+        forecast_daily["week_start"] = (
+            forecast_daily["date"]
+            - pd.to_timedelta(forecast_daily["date"].dt.weekday, unit="D")
+        )
 
     actual_daily = load_daily_enrollment_data()
 
@@ -609,10 +668,11 @@ def get_daily_pace():
         "weekly_forecast": to_records(weekly_forecast)
     }
 
+
 # ---------------------------------------
 # Save daily forecast history
 # ---------------------------------------
-    
+
 def save_daily_forecast_history():
     pace_data = get_daily_pace()
 
@@ -648,32 +708,6 @@ def save_daily_forecast_history():
         "forecast_month": pace_data["month"],
         "snapshot_date": snapshot_date
     }
-    
-
-# ---------------------------------------
-# Get forecast history months
-# ---------------------------------------
-
-def get_forecast_history_months():
-    history_df = load_forecast_history()
-
-    history_df["month_key"] = (
-        history_df["forecast_month"]
-        .dt.to_period("M")
-        .astype(str)
-    )
-
-    months = (
-        history_df["month_key"]
-        .dropna()
-        .drop_duplicates()
-        .sort_values()
-        .tolist()
-    )
-
-    return {
-        "months": months
-    }
 
 
 # ---------------------------------------
@@ -686,6 +720,9 @@ if __name__ == "__main__":
 
     print("\nCurrent-year projection:")
     print(get_current_year_projection())
+
+    print("\nForecast history months:")
+    print(get_forecast_history_months())
 
     print("\nDaily pace:")
     print(get_daily_pace())
