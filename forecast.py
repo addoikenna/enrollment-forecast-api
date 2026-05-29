@@ -689,13 +689,45 @@ def save_daily_forecast_history():
     pace_data = get_daily_pace()
 
     snapshot_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+    forecast_month = pace_data["month"]
+
+    # ---------------------------------------
+    # Check if forecast month already exists
+    # ---------------------------------------
+
+    try:
+        history_df = load_forecast_history()
+
+        existing_months = (
+            history_df["forecast_month"]
+            .dt.strftime("%Y-%m-%d")
+            .drop_duplicates()
+            .tolist()
+        )
+
+        if forecast_month in existing_months:
+            return {
+                "status": "skipped",
+                "message": f"Forecast already exists for {forecast_month}",
+                "forecast_month": forecast_month,
+                "snapshot_date": snapshot_date,
+                "rows_sent": 0
+            }
+
+    except Exception:
+        # If history sheet is empty or unreadable, continue and save forecast
+        pass
+
+    # ---------------------------------------
+    # Prepare rows for saving
+    # ---------------------------------------
 
     rows = []
 
     for row in pace_data["daily_data"]:
         rows.append({
             "snapshot_date": snapshot_date,
-            "forecast_month": pace_data["month"],
+            "forecast_month": forecast_month,
             "forecast_date": row["date"],
             "forecasted_enrollments": row["forecasted_enrollments"],
             "month_type": row["month_type"],
@@ -707,6 +739,10 @@ def save_daily_forecast_history():
         "rows": rows
     }
 
+    # ---------------------------------------
+    # Send rows to Google Apps Script
+    # ---------------------------------------
+
     response = requests.post(
         FORECAST_HISTORY_WEB_APP_URL,
         json=payload,
@@ -714,10 +750,11 @@ def save_daily_forecast_history():
     )
 
     return {
+        "status": "saved",
         "status_code": response.status_code,
         "response": response.text,
         "rows_sent": len(rows),
-        "forecast_month": pace_data["month"],
+        "forecast_month": forecast_month,
         "snapshot_date": snapshot_date
     }
 
