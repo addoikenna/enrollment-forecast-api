@@ -568,6 +568,8 @@ def get_daily_pace(month=None):
             "forecast_date": "date"
         })
 
+        forecast_daily["month"] = current_month
+
         forecast_daily["week_start"] = (
             forecast_daily["date"]
             - pd.to_timedelta(forecast_daily["date"].dt.weekday, unit="D")
