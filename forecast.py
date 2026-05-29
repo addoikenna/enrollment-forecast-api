@@ -208,6 +208,16 @@ def load_forecast_history():
         history_df["monthly_forecast"].astype(int)
     )
 
+    # Keep only the latest snapshot for each forecast month and forecast date
+    history_df = history_df.sort_values("snapshot_date")
+    
+    history_df = history_df.drop_duplicates(
+        subset=["forecast_month", "forecast_date"],
+        keep="last"
+    )
+    
+    history_df = history_df.reset_index(drop=True)
+
     return history_df
 
 
