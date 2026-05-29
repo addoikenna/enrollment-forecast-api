@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Query
 
 from forecast import (
     forecast_next_6_months,
     get_current_year_projection,
     get_daily_pace,
-    save_daily_forecast_history
+    save_daily_forecast_history,
+    get_forecast_history_months
 )
 
 
@@ -46,8 +48,10 @@ def get_forecast():
 
 
 @app.get("/daily-pace")
-def daily_pace():
-    return get_daily_pace()
+def daily_pace(
+    month: str | None = Query(default=None)
+):
+    return get_daily_pace(month)
 
 
 @app.get("/model-info")
@@ -74,3 +78,7 @@ def model_info():
 @app.get("/save-daily-forecast")
 def save_daily_forecast():
     return save_daily_forecast_history()
+    
+@app.get("/forecast-history-months")
+def forecast_history_months():
+    return get_forecast_history_months()
