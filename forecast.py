@@ -612,7 +612,6 @@ def get_daily_pace(month=None):
         "enrollments": "actual_enrollments"
     })
 
-    # IMPORTANT: sort before cumulative calculations
     pace_df = pace_df.sort_values("date").reset_index(drop=True)
 
     pace_df["actual_enrollments"] = (
@@ -636,17 +635,42 @@ def get_daily_pace(month=None):
         - pace_df["cumulative_forecast"]
     )
 
+    # ---------------------------------------
+    # Determine actual and forecast dates
+    # ---------------------------------------
+
     latest_actual_date = actual_current_month["date"].max()
 
     if pd.isna(latest_actual_date):
         latest_actual_date = current_month - pd.Timedelta(days=1)
 
-    today_df = pace_df[
-        pace_df["date"] <= latest_actual_date
-    ]
+    today = pd.Timestamp.today().normalize()
 
-    actual_to_date = int(today_df["actual_enrollments"].sum())
-    expected_to_date = int(today_df["forecasted_enrollments"].sum())
+    month_start = current_month
+    month_end = forecast_daily["date"].max()
+
+    if today < month_start:
+        pace_as_of_date = month_start
+    elif today > month_end:
+        pace_as_of_date = month_end
+    else:
+        pace_as_of_date = today
+
+    # ---------------------------------------
+    # KPI calculations
+    # ---------------------------------------
+
+    actual_to_date = int(
+        pace_df[
+            pace_df["date"] <= pace_as_of_date
+        ]["actual_enrollments"].sum()
+    )
+
+    expected_to_date = int(
+        pace_df[
+            pace_df["date"] <= pace_as_of_date
+        ]["forecasted_enrollments"].sum()
+    )
 
     pace_variance = actual_to_date - expected_to_date
 
@@ -661,7 +685,7 @@ def get_daily_pace(month=None):
     remaining_target = monthly_forecast - actual_to_date
 
     days_remaining = int(
-        (forecast_daily["date"].max() - latest_actual_date).days
+        (month_end - pace_as_of_date).days
     )
 
     if days_remaining > 0:
@@ -671,6 +695,48 @@ def get_daily_pace(month=None):
         )
     else:
         required_daily_pace = 0
+
+    # ---------------------------------------
+    # Today / Yesterday metrics
+    # ---------------------------------------
+
+    today_row = pace_df[
+        pace_df["date"] == pace_as_of_date
+    ]
+
+    if len(today_row) > 0:
+        enrollment_today = int(
+            today_row["actual_enrollments"].iloc[0]
+        )
+
+        forecasted_enrollment_today = int(
+            today_row["forecasted_enrollments"].iloc[0]
+        )
+    else:
+        enrollment_today = 0
+        forecasted_enrollment_today = 0
+
+    yesterday = pace_as_of_date - pd.Timedelta(days=1)
+
+    # Pull yesterday from full actual data, not only selected month
+    yesterday_actual = actual_daily[
+        actual_daily["date"] == yesterday
+    ]
+
+    if len(yesterday_actual) > 0:
+        enrollment_yesterday = int(
+            yesterday_actual["enrollments"].iloc[0]
+        )
+    else:
+        enrollment_yesterday = 0
+
+    if enrollment_yesterday > 0:
+        enrollment_today_change_pct = round(
+            ((enrollment_today - enrollment_yesterday) / enrollment_yesterday) * 100,
+            2
+        )
+    else:
+        enrollment_today_change_pct = None
 
     weekly_forecast = (
         forecast_daily
@@ -693,6 +759,7 @@ def get_daily_pace(month=None):
         "month": str(current_month.date()),
         "monthly_forecast": monthly_forecast,
         "latest_actual_date": str(latest_actual_date.date()),
+        "pace_as_of_date": str(pace_as_of_date.date()),
         "actual_to_date": actual_to_date,
         "expected_to_date": expected_to_date,
         "pace_variance": int(pace_variance),
@@ -700,6 +767,10 @@ def get_daily_pace(month=None):
         "remaining_target": int(remaining_target),
         "days_remaining": days_remaining,
         "required_daily_pace": required_daily_pace,
+        "enrollment_today": enrollment_today,
+        "enrollment_yesterday": enrollment_yesterday,
+        "enrollment_today_change_pct": enrollment_today_change_pct,
+        "forecasted_enrollment_today": forecasted_enrollment_today,
         "daily_data": to_records(pace_df),
         "weekly_forecast": to_records(weekly_forecast)
     }
