@@ -753,7 +753,11 @@ def get_forecast_history_months():
 # Daily pace tracking
 # ---------------------------------------
 
-def get_daily_pace(month=None):
+def get_daily_pace(month=None, program="All Programs"):
+
+    # ---------------------------------------
+    # Determine forecast month
+    # ---------------------------------------
 
     if month is None:
         monthly_forecast_df = forecast_next_6_months()
@@ -762,51 +766,98 @@ def get_daily_pace(month=None):
             monthly_forecast_df["month"].iloc[0]
         )
 
-        monthly_forecast = int(
-            monthly_forecast_df["forecasted_enrollments"].iloc[0]
-        )
-
-        daily_day_weight_profile = build_daily_day_weight_profile()
-
-        forecast_daily = create_daily_forecast_allocation(
-            forecast_month=current_month,
-            monthly_forecast=monthly_forecast,
-            daily_day_weight_profile=daily_day_weight_profile
-        )
-
-        forecast_daily = forecast_daily.sort_values("date").reset_index(drop=True)
-
     else:
-        history_df = load_forecast_history()
-
         current_month = pd.Timestamp(month)
 
-        forecast_daily = history_df[
-            history_df["forecast_month"].dt.to_period("M")
-            == current_month.to_period("M")
-        ].copy()
+    # ---------------------------------------
+    # Forecast data
+    # ---------------------------------------
 
-        if len(forecast_daily) == 0:
-            raise ValueError(f"No forecast history found for {month}")
+    if program == "All Programs":
+
+        if month is None:
+            monthly_forecast_df = forecast_next_6_months()
+
+            target_row = monthly_forecast_df[
+                monthly_forecast_df["month"].dt.to_period("M")
+                == current_month.to_period("M")
+            ]
+
+            monthly_forecast = int(
+                target_row["forecasted_enrollments"].iloc[0]
+            )
+
+            daily_day_weight_profile = build_daily_day_weight_profile()
+
+            forecast_daily = create_daily_forecast_allocation(
+                forecast_month=current_month,
+                monthly_forecast=monthly_forecast,
+                daily_day_weight_profile=daily_day_weight_profile
+            )
+
+        else:
+            history_df = load_forecast_history()
+
+            forecast_daily = history_df[
+                (
+                    history_df["forecast_month"].dt.to_period("M")
+                    == current_month.to_period("M")
+                )
+                & (
+                    history_df["program"].fillna("All Programs")
+                    == "All Programs"
+                )
+            ].copy()
+
+            if len(forecast_daily) == 0:
+                raise ValueError(
+                    f"No forecast history found for {month}"
+                )
+
+            monthly_forecast = int(
+                forecast_daily["monthly_forecast"].iloc[0]
+            )
+
+            forecast_daily = forecast_daily.rename(columns={
+                "forecast_date": "date"
+            })
+
+            forecast_daily["month"] = current_month
+
+            forecast_daily["week_start"] = (
+                forecast_daily["date"]
+                - pd.to_timedelta(
+                    forecast_daily["date"].dt.weekday,
+                    unit="D"
+                )
+            )
+
+    else:
+        forecast_daily = get_program_daily_forecast(
+            forecast_month=current_month,
+            program=program
+        )
 
         monthly_forecast = int(
-            forecast_daily["monthly_forecast"].iloc[0]
+            forecast_daily["forecasted_enrollments"].sum()
         )
 
-        forecast_daily = forecast_daily.rename(columns={
-            "forecast_date": "date"
-        })
+    forecast_daily = (
+        forecast_daily
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
 
-        forecast_daily["month"] = current_month
-
-        forecast_daily["week_start"] = (
-            forecast_daily["date"]
-            - pd.to_timedelta(forecast_daily["date"].dt.weekday, unit="D")
-        )
-
-        forecast_daily = forecast_daily.sort_values("date").reset_index(drop=True)
+    # ---------------------------------------
+    # Actual data
+    # ---------------------------------------
 
     actual_daily = load_daily_enrollment_data()
+
+    if program != "All Programs":
+        actual_daily = actual_daily[
+            actual_daily["program"] == program
+        ].copy()
 
     actual_current_month = actual_daily[
         actual_daily["date"].dt.to_period("M")
@@ -818,6 +869,10 @@ def get_daily_pace(month=None):
         .sort_values("date")
         .reset_index(drop=True)
     )
+
+    # ---------------------------------------
+    # Merge forecast and actuals
+    # ---------------------------------------
 
     pace_df = forecast_daily.merge(
         actual_current_month[["date", "enrollments"]],
@@ -853,7 +908,7 @@ def get_daily_pace(month=None):
     )
 
     # ---------------------------------------
-    # Determine actual and forecast dates
+    # Dates
     # ---------------------------------------
 
     latest_actual_date = actual_current_month["date"].max()
@@ -935,25 +990,31 @@ def get_daily_pace(month=None):
 
     yesterday = pace_as_of_date - pd.Timedelta(days=1)
 
-    # Pull yesterday from full actual data, not only selected month
     yesterday_actual = actual_daily[
         actual_daily["date"] == yesterday
     ]
 
     if len(yesterday_actual) > 0:
         enrollment_yesterday = int(
-            yesterday_actual["enrollments"].iloc[0]
+            yesterday_actual["enrollments"].sum()
         )
     else:
         enrollment_yesterday = 0
 
     if enrollment_yesterday > 0:
         enrollment_today_change_pct = round(
-            ((enrollment_today - enrollment_yesterday) / enrollment_yesterday) * 100,
+            (
+                (enrollment_today - enrollment_yesterday)
+                / enrollment_yesterday
+            ) * 100,
             2
         )
     else:
         enrollment_today_change_pct = None
+
+    # ---------------------------------------
+    # Weekly forecast
+    # ---------------------------------------
 
     weekly_forecast = (
         forecast_daily
@@ -963,6 +1024,10 @@ def get_daily_pace(month=None):
         .sort_values("week_start")
         .reset_index(drop=True)
     )
+
+    # ---------------------------------------
+    # Convert dates for JSON
+    # ---------------------------------------
 
     pace_df["date"] = pace_df["date"].astype(str)
     pace_df["month"] = pace_df["month"].astype(str)
@@ -974,6 +1039,7 @@ def get_daily_pace(month=None):
 
     return {
         "month": str(current_month.date()),
+        "program": program,
         "monthly_forecast": monthly_forecast,
         "latest_actual_date": str(latest_actual_date.date()),
         "pace_as_of_date": str(pace_as_of_date.date()),
