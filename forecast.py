@@ -352,6 +352,52 @@ def get_program_monthly_forecast(
         ]
     ]
 
+# ---------------------------------------
+# Get program daily forecast
+# ---------------------------------------
+
+def get_program_daily_forecast(
+    forecast_month,
+    program,
+    months_back=6,
+    min_history_months=3
+):
+    forecast_month = pd.Timestamp(forecast_month)
+
+    program_forecasts = get_program_monthly_forecast(
+        forecast_month=forecast_month,
+        months_back=months_back,
+        min_history_months=min_history_months
+    )
+
+    target_program = program_forecasts[
+        program_forecasts["program"] == program
+    ]
+
+    if len(target_program) == 0:
+        raise ValueError(
+            f"No forecast found for program: {program}"
+        )
+
+    monthly_program_forecast = int(
+        target_program["program_forecast"].iloc[0]
+    )
+
+    daily_day_weight_profile = (
+        build_daily_day_weight_profile()
+    )
+
+    daily_forecast = create_daily_forecast_allocation(
+        forecast_month=forecast_month,
+        monthly_forecast=monthly_program_forecast,
+        daily_day_weight_profile=daily_day_weight_profile
+    )
+
+    daily_forecast["program"] = program
+
+    return daily_forecast
+
+
 
 # ---------------------------------------
 # Load forecast history
