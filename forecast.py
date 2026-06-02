@@ -309,6 +309,51 @@ def allocate_forecast_by_program(
     )  
 
 # ---------------------------------------
+# Get program monthly forecast
+# ---------------------------------------
+
+def get_program_monthly_forecast(
+    forecast_month,
+    months_back=6,
+    min_history_months=3
+):
+    monthly_forecast_df = forecast_next_6_months()
+
+    forecast_month = pd.Timestamp(forecast_month)
+
+    target_row = monthly_forecast_df[
+        monthly_forecast_df["month"].dt.to_period("M")
+        == forecast_month.to_period("M")
+    ]
+
+    if len(target_row) == 0:
+        raise ValueError(
+            f"No forecast found for {forecast_month}"
+        )
+
+    monthly_forecast = int(
+        target_row["forecasted_enrollments"].iloc[0]
+    )
+
+    allocation_df = allocate_forecast_by_program(
+        monthly_forecast=monthly_forecast,
+        months_back=months_back,
+        min_history_months=min_history_months
+    )
+
+    allocation_df["forecast_month"] = forecast_month
+
+    return allocation_df[
+        [
+            "forecast_month",
+            "program",
+            "share",
+            "program_forecast"
+        ]
+    ]
+
+
+# ---------------------------------------
 # Load forecast history
 # ---------------------------------------
 
