@@ -309,6 +309,48 @@ def allocate_forecast_by_program(
     )  
 
 # ---------------------------------------
+# Get forecast overview
+# ---------------------------------------
+
+def get_forecast_overview(program="All Programs"):
+    forecast_df = forecast_next_6_months().copy()
+
+    if program != "All Programs":
+        program_rows = []
+
+        for _, row in forecast_df.iterrows():
+            allocation_df = allocate_forecast_by_program(
+                monthly_forecast=int(row["forecasted_enrollments"])
+            )
+
+            selected_program = allocation_df[
+                allocation_df["program"] == program
+            ]
+
+            if len(selected_program) == 0:
+                raise ValueError(
+                    f"No forecast allocation found for program: {program}"
+                )
+
+            program_rows.append({
+                "month": row["month"],
+                "forecasted_enrollments": int(
+                    selected_program["program_forecast"].iloc[0]
+                )
+            })
+
+        forecast_df = pd.DataFrame(program_rows)
+
+    forecast_df["month"] = forecast_df["month"].astype(str)
+
+    return {
+        "forecast_horizon": "next_6_months",
+        "program": program,
+        "data": forecast_df.to_dict(orient="records"),
+        "year_projection": get_current_year_projection()
+    }
+
+# ---------------------------------------
 # Get program monthly forecast
 # ---------------------------------------
 
