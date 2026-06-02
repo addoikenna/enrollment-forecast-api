@@ -316,30 +316,25 @@ def get_forecast_overview(program="All Programs"):
     forecast_df = forecast_next_6_months().copy()
 
     if program != "All Programs":
-        program_rows = []
+        shares = get_program_shares()
 
-        for _, row in forecast_df.iterrows():
-            allocation_df = allocate_forecast_by_program(
-                monthly_forecast=int(row["forecasted_enrollments"])
+        selected_program = shares[
+            shares["program"] == program
+        ]
+
+        if len(selected_program) == 0:
+            raise ValueError(
+                f"No forecast allocation found for program: {program}"
             )
 
-            selected_program = allocation_df[
-                allocation_df["program"] == program
-            ]
+        program_share = float(
+            selected_program["share"].iloc[0]
+        )
 
-            if len(selected_program) == 0:
-                raise ValueError(
-                    f"No forecast allocation found for program: {program}"
-                )
-
-            program_rows.append({
-                "month": row["month"],
-                "forecasted_enrollments": int(
-                    selected_program["program_forecast"].iloc[0]
-                )
-            })
-
-        forecast_df = pd.DataFrame(program_rows)
+        forecast_df["forecasted_enrollments"] = (
+            forecast_df["forecasted_enrollments"]
+            * program_share
+        ).round().astype(int)
 
     forecast_df["month"] = forecast_df["month"].astype(str)
 
