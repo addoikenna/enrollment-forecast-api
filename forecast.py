@@ -217,9 +217,9 @@ def get_eligible_programs(min_history_months=3):
     }
 
 
-#----------------------------------------
+# ---------------------------------------
 # Get program share
-#----------------------------------------
+# ---------------------------------------
 
 def get_program_shares(months_back=6, min_history_months=3):
     daily_df = load_daily_enrollment_data()
@@ -269,6 +269,44 @@ def get_program_shares(months_back=6, min_history_months=3):
 
     return program_totals
 
+# ---------------------------------------
+# Allocate forecast by programs
+# ---------------------------------------
+
+def allocate_forecast_by_program(
+    monthly_forecast,
+    months_back=6,
+    min_history_months=3
+):
+    shares = get_program_shares(
+        months_back=months_back,
+        min_history_months=min_history_months
+    ).copy()
+
+    shares["program_forecast"] = (
+        shares["share"] * monthly_forecast
+    ).round().astype(int)
+
+    # Fix rounding drift
+    diff = monthly_forecast - shares["program_forecast"].sum()
+
+    if diff != 0:
+        largest_program = shares["share"].idxmax()
+        shares.loc[
+            largest_program,
+            "program_forecast"
+        ] += diff
+
+    return shares[
+        [
+            "program",
+            "share",
+            "program_forecast"
+        ]
+    ].sort_values(
+        "program_forecast",
+        ascending=False
+    )  
 
 # ---------------------------------------
 # Load forecast history
