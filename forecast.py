@@ -174,8 +174,11 @@ def load_daily_enrollment_data():
 
     daily_df = daily_df[[
         "date",
+        "program",
         "enrollments"
     ]]
+
+    daily_df["program"] = daily_df["program"].astype(str).str.strip()
 
     daily_df = daily_df.sort_values("date").reset_index(drop=True)
 
