@@ -217,6 +217,59 @@ def get_eligible_programs(min_history_months=3):
     }
 
 
+#----------------------------------------
+# Get program share
+#----------------------------------------
+
+def get_program_shares(months_back=6, min_history_months=3):
+    daily_df = load_daily_enrollment_data()
+
+    daily_df["month_period"] = daily_df["date"].dt.to_period("M")
+
+    max_date = daily_df["date"].max()
+    cutoff_date = max_date - pd.DateOffset(months=months_back)
+
+    recent_df = daily_df[
+        daily_df["date"] >= cutoff_date
+    ].copy()
+
+    program_history = (
+        daily_df
+        .groupby("program")["month_period"]
+        .nunique()
+        .reset_index()
+        .rename(columns={"month_period": "months_active"})
+    )
+
+    eligible_programs = program_history[
+        program_history["months_active"] >= min_history_months
+    ]["program"]
+
+    recent_df = recent_df[
+        recent_df["program"].isin(eligible_programs)
+    ]
+
+    program_totals = (
+        recent_df
+        .groupby("program")["enrollments"]
+        .sum()
+        .reset_index()
+    )
+
+    total_enrollments = program_totals["enrollments"].sum()
+
+    program_totals["share"] = (
+        program_totals["enrollments"] / total_enrollments
+    )
+
+    program_totals = program_totals.sort_values(
+        "share",
+        ascending=False
+    )
+
+    return program_totals
+
+
 # ---------------------------------------
 # Load forecast history
 # ---------------------------------------
