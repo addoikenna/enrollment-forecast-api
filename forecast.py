@@ -186,6 +186,38 @@ def load_daily_enrollment_data():
 
 
 # ---------------------------------------
+# Get eligible programs
+# ---------------------------------------
+
+def get_eligible_programs(min_history_months=3):
+    daily_df = load_daily_enrollment_data()
+
+    daily_df["month_period"] = (
+        daily_df["date"].dt.to_period("M").astype(str)
+    )
+
+    program_history = (
+        daily_df
+        .groupby("program")["month_period"]
+        .nunique()
+        .reset_index()
+        .rename(columns={"month_period": "months_active"})
+    )
+
+    eligible = program_history[
+        program_history["months_active"] >= min_history_months
+    ].copy()
+
+    eligible = eligible.sort_values("program")
+
+    programs = eligible["program"].tolist()
+
+    return {
+        "programs": ["All Programs"] + programs
+    }
+
+
+# ---------------------------------------
 # Load forecast history
 # ---------------------------------------
 
