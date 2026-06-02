@@ -7,7 +7,8 @@ from forecast import (
     get_current_year_projection,
     get_daily_pace,
     save_daily_forecast_history,
-    get_forecast_history_months
+    get_forecast_history_months,
+    get_eligible_programs
 )
 
 
@@ -46,12 +47,21 @@ def get_forecast():
         "year_projection": get_current_year_projection()
     }
 
-
+    
 @app.get("/daily-pace")
 def daily_pace(
-    month: str | None = Query(default=None)
+    month: str | None = Query(default=None),
+    program: str = Query(default="All Programs")
 ):
-    return get_daily_pace(month)
+    return get_daily_pace(
+        month=month,
+        program=program
+    )
+
+
+@app.get("/eligible-programs")
+def eligible_programs():
+    return get_eligible_programs()
 
 
 @app.get("/model-info")
