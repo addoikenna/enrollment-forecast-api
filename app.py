@@ -8,7 +8,8 @@ from forecast import (
     get_daily_pace,
     save_daily_forecast_history,
     get_forecast_history_months,
-    get_eligible_programs
+    get_eligible_programs,
+    get_forecast_overview
 )
 
 
@@ -36,16 +37,10 @@ def health_check():
 
 
 @app.get("/forecast")
-def get_forecast():
-    forecast_df = forecast_next_6_months()
-
-    forecast_df["month"] = forecast_df["month"].astype(str)
-
-    return {
-        "forecast_horizon": "next_6_months",
-        "data": forecast_df.to_dict(orient="records"),
-        "year_projection": get_current_year_projection()
-    }
+def get_forecast(
+    program: str = Query(default="All Programs")
+):
+    return get_forecast_overview(program=program)
 
     
 @app.get("/daily-pace")
