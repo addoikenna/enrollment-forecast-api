@@ -1423,6 +1423,25 @@ def backfill_program_forecast_history(month="2026-05-01"):
     }
 
 
+# ------------------------------------------------
+# Clear forecast cache
+# ------------------------------------------------
+
+def clear_forecast_cache():
+    load_live_data.cache_clear()
+    load_daily_enrollment_data.cache_clear()
+    load_forecast_history.cache_clear()
+    forecast_next_6_months.cache_clear()
+    build_daily_day_weight_profile.cache_clear()
+    get_eligible_programs.cache_clear()
+    get_program_shares.cache_clear()
+    get_daily_pace.cache_clear()
+
+    return {
+        "status": "success",
+        "message": "Forecast cache cleared"
+    }
+
 # ---------------------------------------
 # Local test
 # ---------------------------------------
