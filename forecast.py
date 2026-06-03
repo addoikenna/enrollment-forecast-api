@@ -1100,62 +1100,61 @@ def get_daily_pace(month=None, program="All Programs"):
 # ---------------------------------------
 
 def save_daily_forecast_history():
-    pace_data = get_daily_pace()
-
     snapshot_date = pd.Timestamp.today().strftime("%Y-%m-%d")
-    forecast_month = pace_data["month"]
 
-    # ---------------------------------------
-    # Check if forecast month already exists
-    # ---------------------------------------
-
-    try:
-        history_df = load_forecast_history()
-
-        existing_months = (
-            history_df["forecast_month"]
-            .dt.strftime("%Y-%m-%d")
-            .drop_duplicates()
-            .tolist()
-        )
-
-        if forecast_month in existing_months:
-            return {
-                "status": "skipped",
-                "message": f"Forecast already exists for {forecast_month}",
-                "forecast_month": forecast_month,
-                "snapshot_date": snapshot_date,
-                "rows_sent": 0
-            }
-
-    except Exception:
-        # If history sheet is empty or unreadable, continue and save forecast
-        pass
-
-    # ---------------------------------------
-    # Prepare rows for saving
-    # ---------------------------------------
+    eligible_programs = get_eligible_programs()["programs"]
 
     rows = []
+    saved_programs = []
+    skipped_programs = []
 
-    for row in pace_data["daily_data"]:
-        rows.append({
-            "snapshot_date": snapshot_date,
-            "forecast_month": forecast_month,
-            "forecast_date": row["date"],
-            "forecasted_enrollments": row["forecasted_enrollments"],
-            "month_type": row["month_type"],
-            "monthly_forecast": pace_data["monthly_forecast"],
-            "model_version": MODEL_VERSION
-        })
+    history_df = load_forecast_history()
+
+    existing_keys = set(
+        zip(
+            history_df["forecast_month"].dt.strftime("%Y-%m-%d"),
+            history_df["program"].fillna("All Programs")
+        )
+    )
+
+    for program in eligible_programs:
+        pace_data = get_daily_pace(program=program)
+
+        forecast_month = pace_data["month"]
+
+        key = (forecast_month, program)
+
+        if key in existing_keys:
+            skipped_programs.append(program)
+            continue
+
+        for row in pace_data["daily_data"]:
+            rows.append({
+                "snapshot_date": snapshot_date,
+                "forecast_month": forecast_month,
+                "forecast_date": row["date"],
+                "program": program,
+                "forecasted_enrollments": row["forecasted_enrollments"],
+                "month_type": row["month_type"],
+                "monthly_forecast": pace_data["monthly_forecast"],
+                "model_version": MODEL_VERSION
+            })
+
+        saved_programs.append(program)
+
+    if len(rows) == 0:
+        return {
+            "status": "skipped",
+            "message": "Forecast history already exists for all eligible programs.",
+            "rows_sent": 0,
+            "saved_programs": saved_programs,
+            "skipped_programs": skipped_programs,
+            "snapshot_date": snapshot_date
+        }
 
     payload = {
         "rows": rows
     }
-
-    # ---------------------------------------
-    # Send rows to Google Apps Script
-    # ---------------------------------------
 
     response = requests.post(
         FORECAST_HISTORY_WEB_APP_URL,
@@ -1168,7 +1167,8 @@ def save_daily_forecast_history():
         "status_code": response.status_code,
         "response": response.text,
         "rows_sent": len(rows),
-        "forecast_month": forecast_month,
+        "saved_programs": saved_programs,
+        "skipped_programs": skipped_programs,
         "snapshot_date": snapshot_date
     }
 
