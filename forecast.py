@@ -1240,6 +1240,122 @@ def save_daily_forecast_history():
         "snapshot_date": snapshot_date
     }
 
+# ---------------------------------------
+# Backfill program forecast history
+# ---------------------------------------
+
+def backfill_program_forecast_history(month="2026-05-01"):
+    snapshot_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+    target_month = pd.Timestamp(month)
+
+    history_df = load_forecast_history()
+
+    # Existing saved keys
+    existing_keys = set(
+        zip(
+            history_df["forecast_month"].dt.strftime("%Y-%m-%d"),
+            history_df["program"].fillna("All Programs")
+        )
+    )
+
+    # Get saved All Programs forecast for the selected month
+    all_program_forecast = history_df[
+        (
+            history_df["forecast_month"].dt.to_period("M")
+            == target_month.to_period("M")
+        )
+        & (
+            history_df["program"].fillna("All Programs")
+            == "All Programs"
+        )
+    ].copy()
+
+    if len(all_program_forecast) == 0:
+        raise ValueError(
+            f"No All Programs forecast found for {month}"
+        )
+
+    monthly_forecast = int(
+        all_program_forecast["monthly_forecast"].iloc[0]
+    )
+
+    daily_day_weight_profile = build_daily_day_weight_profile()
+
+    program_allocations = allocate_forecast_by_program(
+        monthly_forecast=monthly_forecast
+    )
+
+    rows = []
+    saved_programs = []
+    skipped_programs = []
+
+    for _, program_row in program_allocations.iterrows():
+        program = program_row["program"]
+
+        key = (
+            str(target_month.date()),
+            program
+        )
+
+        if key in existing_keys:
+            skipped_programs.append(program)
+            continue
+
+        program_monthly_forecast = int(
+            program_row["program_forecast"]
+        )
+
+        program_daily = create_daily_forecast_allocation(
+            forecast_month=target_month,
+            monthly_forecast=program_monthly_forecast,
+            daily_day_weight_profile=daily_day_weight_profile
+        )
+
+        for _, row in program_daily.iterrows():
+            rows.append({
+                "snapshot_date": snapshot_date,
+                "forecast_month": str(target_month.date()),
+                "forecast_date": str(row["date"].date()),
+                "program": program,
+                "forecasted_enrollments": int(row["forecasted_enrollments"]),
+                "month_type": row["month_type"],
+                "monthly_forecast": program_monthly_forecast,
+                "model_version": MODEL_VERSION + "_backfill"
+            })
+
+        saved_programs.append(program)
+
+    if len(rows) == 0:
+        return {
+            "status": "skipped",
+            "message": f"Program forecast history already exists for {month}",
+            "rows_sent": 0,
+            "saved_programs": saved_programs,
+            "skipped_programs": skipped_programs,
+            "snapshot_date": snapshot_date
+        }
+
+    payload = {
+        "rows": rows
+    }
+
+    response = requests.post(
+        FORECAST_HISTORY_WEB_APP_URL,
+        json=payload,
+        timeout=60
+    )
+
+    return {
+        "status": "saved",
+        "status_code": response.status_code,
+        "response": response.text,
+        "rows_sent": len(rows),
+        "forecast_month": str(target_month.date()),
+        "saved_programs": saved_programs,
+        "skipped_programs": skipped_programs,
+        "snapshot_date": snapshot_date
+    }
+    
 
 # ---------------------------------------
 # Local test
