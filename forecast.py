@@ -222,6 +222,44 @@ def get_eligible_programs(min_history_months=3):
 
 
 # ---------------------------------------
+# Classify degree type
+# ---------------------------------------
+
+def classify_degree_type(program):
+    program = str(program).strip().upper()
+
+    if program.startswith("B"):
+        return "Undergraduate"
+
+    if program.startswith("M") or program.startswith("D"):
+        return "Postgraduate"
+
+    return "Other"
+
+
+# -----------------------------------------
+# Get programns by degree type
+# -----------------------------------------
+
+def get_programs_by_degree_type(
+    degree_type="All"
+):
+    programs = get_eligible_programs()["programs"]
+
+    if degree_type == "All":
+        return [
+            p for p in programs
+            if p != "All Programs"
+        ]
+
+    return [
+        p
+        for p in programs
+        if classify_degree_type(p) == degree_type
+    ]
+
+
+# ---------------------------------------
 # Get program share
 # ---------------------------------------
 
