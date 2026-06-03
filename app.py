@@ -9,7 +9,8 @@ from forecast import (
     save_daily_forecast_history,
     get_forecast_history_months,
     get_eligible_programs,
-    get_forecast_overview
+    get_forecast_overview,
+    backfill_program_forecast_history
 )
 
 
@@ -83,7 +84,15 @@ def model_info():
 @app.get("/save-daily-forecast")
 def save_daily_forecast():
     return save_daily_forecast_history()
+
     
 @app.get("/forecast-history-months")
 def forecast_history_months():
     return get_forecast_history_months()
+
+
+@app.get("/backfill-program-forecast")
+def backfill_program_forecast(
+    month: str = Query(default="2026-05-01")
+):
+    return backfill_program_forecast_history(month=month)
