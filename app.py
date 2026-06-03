@@ -10,8 +10,7 @@ from forecast import (
     get_forecast_history_months,
     get_eligible_programs,
     get_forecast_overview,
-    backfill_program_forecast_history,
-    backfill_all_programs_forecast
+    backfill_program_forecast_history
 )
 
 
@@ -99,9 +98,3 @@ def backfill_program_forecast(
     return backfill_program_forecast_history(month=month)
 
 
-# -----------------------------------------------------
-@app.get("/backfill-all-programs-forecast")
-def backfill_all_programs(
-    month: str = Query(default="2026-06-01")
-):
-    return backfill_all_programs_forecast(month=month)
