@@ -40,9 +40,13 @@ def health_check():
 
 @app.get("/forecast")
 def get_forecast(
-    program: str = Query(default="All Programs")
+    program: str = Query(default="All Programs"),
+    degree_type: str = Query(default="All")
 ):
-    return get_forecast_overview(program=program)
+    return get_forecast_overview(
+        program=program,
+        degree_type=degree_type
+    )
 
     
 @app.get("/daily-pace")
