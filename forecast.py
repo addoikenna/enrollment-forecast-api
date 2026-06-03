@@ -27,7 +27,7 @@ FORECAST_HISTORY_GID = "0"
 
 FORECAST_HISTORY_WEB_APP_URL = (
     "https://script.google.com/macros/s/"
-    "AKfycbyueag5B7rLm6zxy2g88olVH8R_ftGI9ZEAKBJ_mmnJFLRSXY5nnQbYm229QDLmgKT4jg/exec"
+    "AKfycbwLsLM6LmwvKYvath0O74b9HW9B4qO0_B6fToXJNmiDbtjNgqBut6BnftWhDGQv8gmXzA/exec"
 )
 
 MODEL_VERSION = "Ridge_v1"
