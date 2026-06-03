@@ -1428,20 +1428,29 @@ def backfill_program_forecast_history(month="2026-05-01"):
 # ------------------------------------------------
 
 def clear_forecast_cache():
-    load_live_data.cache_clear()
-    load_daily_enrollment_data.cache_clear()
-    load_forecast_history.cache_clear()
-    forecast_next_6_months.cache_clear()
-    build_daily_day_weight_profile.cache_clear()
-    get_eligible_programs.cache_clear()
-    get_program_shares.cache_clear()
-    get_daily_pace.cache_clear()
+    cached_functions = [
+        load_live_data,
+        load_daily_enrollment_data,
+        load_forecast_history,
+        forecast_next_6_months,
+        build_daily_day_weight_profile,
+        get_eligible_programs,
+        get_program_shares,
+        get_daily_pace,
+    ]
+
+    cleared = []
+
+    for func in cached_functions:
+        if hasattr(func, "cache_clear"):
+            func.cache_clear()
+            cleared.append(func.__name__)
 
     return {
         "status": "success",
-        "message": "Forecast cache cleared"
+        "message": "Forecast cache cleared",
+        "cleared_functions": cleared
     }
-
 # ---------------------------------------
 # Local test
 # ---------------------------------------
