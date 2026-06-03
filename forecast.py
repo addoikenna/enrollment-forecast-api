@@ -465,8 +465,10 @@ def load_forecast_history():
     # Keep only the latest snapshot for each forecast month and forecast date
     history_df = history_df.sort_values("snapshot_date")
     
+    history_df["program"] = history_df["program"].fillna("All Programs")
+
     history_df = history_df.drop_duplicates(
-        subset=["forecast_month", "forecast_date"],
+        subset=["forecast_month", "forecast_date", "program"],
         keep="last"
     )
     
@@ -1102,41 +1104,107 @@ def get_daily_pace(month=None, program="All Programs"):
 def save_daily_forecast_history():
     snapshot_date = pd.Timestamp.today().strftime("%Y-%m-%d")
 
+    monthly_forecast_df = forecast_next_6_months()
+
+    current_month = pd.Timestamp(
+        monthly_forecast_df["month"].iloc[0]
+    )
+
+    total_monthly_forecast = int(
+        monthly_forecast_df["forecasted_enrollments"].iloc[0]
+    )
+
+    daily_day_weight_profile = build_daily_day_weight_profile()
+
     eligible_programs = get_eligible_programs()["programs"]
 
     rows = []
     saved_programs = []
     skipped_programs = []
 
-    history_df = load_forecast_history()
+    try:
+        history_df = load_forecast_history()
 
-    existing_keys = set(
-        zip(
-            history_df["forecast_month"].dt.strftime("%Y-%m-%d"),
-            history_df["program"].fillna("All Programs")
+        existing_keys = set(
+            zip(
+                history_df["forecast_month"].dt.strftime("%Y-%m-%d"),
+                history_df["program"].fillna("All Programs")
+            )
         )
+    except Exception:
+        existing_keys = set()
+
+    # ---------------------------------------
+    # Save All Programs forecast
+    # ---------------------------------------
+
+    all_program_key = (
+        str(current_month.date()),
+        "All Programs"
     )
 
-    for program in eligible_programs:
-        pace_data = get_daily_pace(program=program)
+    if all_program_key in existing_keys:
+        skipped_programs.append("All Programs")
+    else:
+        all_program_daily = create_daily_forecast_allocation(
+            forecast_month=current_month,
+            monthly_forecast=total_monthly_forecast,
+            daily_day_weight_profile=daily_day_weight_profile
+        )
 
-        forecast_month = pace_data["month"]
+        for _, row in all_program_daily.iterrows():
+            rows.append({
+                "snapshot_date": snapshot_date,
+                "forecast_month": str(current_month.date()),
+                "forecast_date": str(row["date"].date()),
+                "program": "All Programs",
+                "forecasted_enrollments": int(row["forecasted_enrollments"]),
+                "month_type": row["month_type"],
+                "monthly_forecast": total_monthly_forecast,
+                "model_version": MODEL_VERSION
+            })
 
-        key = (forecast_month, program)
+        saved_programs.append("All Programs")
+
+    # ---------------------------------------
+    # Save program-level forecasts
+    # ---------------------------------------
+
+    program_allocations = allocate_forecast_by_program(
+        monthly_forecast=total_monthly_forecast
+    )
+
+    for _, program_row in program_allocations.iterrows():
+        program = program_row["program"]
+
+        key = (
+            str(current_month.date()),
+            program
+        )
 
         if key in existing_keys:
             skipped_programs.append(program)
             continue
 
-        for row in pace_data["daily_data"]:
+        program_monthly_forecast = int(
+            program_row["program_forecast"]
+        )
+
+        program_daily = create_daily_forecast_allocation(
+            forecast_month=current_month,
+            monthly_forecast=program_monthly_forecast,
+            daily_day_weight_profile=daily_day_weight_profile
+        )
+
+        for _, row in program_daily.iterrows():
             rows.append({
                 "snapshot_date": snapshot_date,
-                "forecast_month": forecast_month,
-                "forecast_date": row["date"],
+                "forecast_month": str(current_month.date()),
+                "forecast_date": str(row["date"].date()),
                 "program": program,
-                "forecasted_enrollments": row["forecasted_enrollments"],
+                "forecasted_enrollments": int(row["forecasted_enrollments"]),
                 "month_type": row["month_type"],
-                "monthly_forecast": pace_data["monthly_forecast"],
+                "monthly_forecast": program_monthly_forecast,
                 "model_version": MODEL_VERSION
             })
 
@@ -1159,7 +1227,7 @@ def save_daily_forecast_history():
     response = requests.post(
         FORECAST_HISTORY_WEB_APP_URL,
         json=payload,
-        timeout=30
+        timeout=60
     )
 
     return {
