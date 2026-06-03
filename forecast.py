@@ -961,10 +961,11 @@ def get_daily_pace(month=None, program="All Programs"):
 
     actual_current_month = (
         actual_current_month
+        .groupby("date", as_index=False)["enrollments"]
+        .sum()
         .sort_values("date")
         .reset_index(drop=True)
     )
-
     # ---------------------------------------
     # Merge forecast and actuals
     # ---------------------------------------
