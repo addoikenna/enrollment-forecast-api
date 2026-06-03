@@ -355,25 +355,49 @@ def allocate_forecast_by_program(
 # Get forecast overview
 # ---------------------------------------
 
-def get_forecast_overview(program="All Programs"):
+def get_forecast_overview(
+    program="All Programs",
+    degree_type="All"
+):
     forecast_df = forecast_next_6_months().copy()
 
-    if program != "All Programs":
-        shares = get_program_shares()
+    if degree_type != "All" and program == "All Programs":
 
+        degree_programs = get_programs_by_degree_type(
+            degree_type
+        )
+    
+        shares = get_program_shares()
+    
+        degree_share = (
+            shares[
+                shares["program"].isin(degree_programs)
+            ]["share"]
+            .sum()
+        )
+    
+        forecast_df["forecasted_enrollments"] = (
+            forecast_df["forecasted_enrollments"]
+            * degree_share
+        ).round().astype(int)
+    
+    elif program != "All Programs":
+    
+        shares = get_program_shares()
+    
         selected_program = shares[
             shares["program"] == program
         ]
-
+    
         if len(selected_program) == 0:
             raise ValueError(
                 f"No forecast allocation found for program: {program}"
             )
-
+    
         program_share = float(
             selected_program["share"].iloc[0]
         )
-
+    
         forecast_df["forecasted_enrollments"] = (
             forecast_df["forecasted_enrollments"]
             * program_share
@@ -382,10 +406,11 @@ def get_forecast_overview(program="All Programs"):
     forecast_df["month"] = forecast_df["month"].astype(str)
 
     return {
-        "forecast_horizon": "next_6_months",
-        "program": program,
-        "data": forecast_df.to_dict(orient="records"),
-        "year_projection": get_current_year_projection()
+      "forecast_horizon": "next_6_months",
+      "degree_type": degree_type,
+      "program": program,
+      "data": forecast_df.to_dict(orient="records"),
+      "year_projection": get_current_year_projection()
     }
 
 # ---------------------------------------
