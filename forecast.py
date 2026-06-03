@@ -726,6 +726,7 @@ def create_daily_forecast_allocation(
     daily_day_weight_profile
 ):
     forecast_month = pd.Timestamp(forecast_month)
+    monthly_forecast = int(monthly_forecast)
 
     if forecast_month.month in [1, 5, 9]:
         forecast_month_type = "Cohort Close Month"
@@ -758,18 +759,23 @@ def create_daily_forecast_allocation(
         daily_forecast_df["normalized_weight"].fillna(0)
     )
 
-    daily_forecast_df["normalized_weight"] = (
-        daily_forecast_df["normalized_weight"]
-        / daily_forecast_df["normalized_weight"].sum()
-    )
+    weight_sum = daily_forecast_df["normalized_weight"].sum()
 
-    daily_forecast_df["forecasted_enrollments"] = (
+    if weight_sum == 0:
+        daily_forecast_df["normalized_weight"] = (
+            1 / len(daily_forecast_df)
+        )
+    else:
+        daily_forecast_df["normalized_weight"] = (
+            daily_forecast_df["normalized_weight"] / weight_sum
+        )
+
+    raw_forecast = (
         monthly_forecast * daily_forecast_df["normalized_weight"]
     )
 
     daily_forecast_df["forecasted_enrollments"] = (
-        daily_forecast_df["forecasted_enrollments"]
-        .round()
+        np.floor(raw_forecast)
         .astype(int)
     )
 
@@ -778,10 +784,29 @@ def create_daily_forecast_allocation(
         - daily_forecast_df["forecasted_enrollments"].sum()
     )
 
-    daily_forecast_df.loc[
-        daily_forecast_df.index[-1],
-        "forecasted_enrollments"
-    ] += difference
+    if difference > 0:
+        fractional_parts = (
+            raw_forecast
+            - np.floor(raw_forecast)
+        )
+
+        add_indices = (
+            fractional_parts
+            .sort_values(ascending=False)
+            .head(difference)
+            .index
+        )
+
+        daily_forecast_df.loc[
+            add_indices,
+            "forecasted_enrollments"
+        ] += 1
+
+    daily_forecast_df["forecasted_enrollments"] = (
+        daily_forecast_df["forecasted_enrollments"]
+        .clip(lower=0)
+        .astype(int)
+    )
 
     daily_forecast_df["month"] = forecast_month
     daily_forecast_df["month_type"] = forecast_month_type
@@ -792,7 +817,6 @@ def create_daily_forecast_allocation(
     )
 
     return daily_forecast_df
-
 
 # ---------------------------------------
 # Forecast history months
