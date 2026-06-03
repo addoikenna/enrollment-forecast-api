@@ -450,32 +450,64 @@ def load_forecast_history():
 
     history_df.columns = history_df.columns.str.strip().str.lower()
 
-    history_df["snapshot_date"] = pd.to_datetime(history_df["snapshot_date"])
-    history_df["forecast_month"] = pd.to_datetime(history_df["forecast_month"])
-    history_df["forecast_date"] = pd.to_datetime(history_df["forecast_date"])
+    history_df["snapshot_date"] = pd.to_datetime(
+        history_df["snapshot_date"]
+    )
+
+    history_df["forecast_month"] = pd.to_datetime(
+        history_df["forecast_month"]
+    )
+
+    history_df["forecast_date"] = pd.to_datetime(
+        history_df["forecast_date"]
+    )
 
     history_df["forecasted_enrollments"] = (
-        history_df["forecasted_enrollments"].astype(int)
+        history_df["forecasted_enrollments"]
+        .astype(int)
     )
 
     history_df["monthly_forecast"] = (
-        history_df["monthly_forecast"].astype(int)
+        history_df["monthly_forecast"]
+        .astype(int)
     )
 
-    # Keep only the latest snapshot for each forecast month and forecast date
+    history_df["program"] = (
+        history_df["program"]
+        .fillna("All Programs")
+        .astype(str)
+        .str.strip()
+    )
+
+    history_df["forecast_month_key"] = (
+        history_df["forecast_month"]
+        .dt.strftime("%Y-%m-%d")
+    )
+
+    history_df["forecast_date_key"] = (
+        history_df["forecast_date"]
+        .dt.strftime("%Y-%m-%d")
+    )
+
     history_df = history_df.sort_values("snapshot_date")
-    
-    history_df["program"] = history_df["program"].fillna("All Programs")
 
     history_df = history_df.drop_duplicates(
-        subset=["forecast_month", "forecast_date", "program"],
+        subset=[
+            "forecast_month_key",
+            "forecast_date_key",
+            "program"
+        ],
         keep="last"
     )
-    
+
+    history_df = history_df.drop(columns=[
+        "forecast_month_key",
+        "forecast_date_key"
+    ])
+
     history_df = history_df.reset_index(drop=True)
 
     return history_df
-
 
 # ---------------------------------------
 # Monthly forecast functions
