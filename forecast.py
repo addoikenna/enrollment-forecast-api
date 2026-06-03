@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import requests
+from functools import lru_cache
 
 
 # ---------------------------------------
@@ -90,6 +91,7 @@ def to_records(df):
 # Load live monthly Google Sheet data
 # ---------------------------------------
 
+@lru_cache(maxsize=1)
 def load_live_data():
     enrollment_url = google_sheet_csv_url(
         ENROLLMENT_SHEET_ID,
@@ -155,6 +157,7 @@ def load_live_data():
 # Load live daily enrollment data
 # ---------------------------------------
 
+@lru_cache(maxsize=1)
 def load_daily_enrollment_data():
     daily_url = google_sheet_csv_url(
         ENROLLMENT_SHEET_ID,
@@ -189,6 +192,7 @@ def load_daily_enrollment_data():
 # Get eligible programs
 # ---------------------------------------
 
+@lru_cache(maxsize=32)
 def get_eligible_programs(min_history_months=3):
     daily_df = load_daily_enrollment_data()
 
@@ -221,6 +225,7 @@ def get_eligible_programs(min_history_months=3):
 # Get program share
 # ---------------------------------------
 
+@lru_cache(maxsize=32)
 def get_program_shares(months_back=6, min_history_months=3):
     daily_df = load_daily_enrollment_data()
 
@@ -440,6 +445,7 @@ def get_program_daily_forecast(
 # Load forecast history
 # ---------------------------------------
 
+@lru_cache(maxsize=1)
 def load_forecast_history():
     history_url = google_sheet_csv_url(
         FORECAST_HISTORY_SHEET_ID,
@@ -513,6 +519,7 @@ def load_forecast_history():
 # Monthly forecast functions
 # ---------------------------------------
 
+@lru_cache(maxsize=1)
 def forecast_next_months(periods=6):
     forecast_df = load_live_data()
     predictions = []
@@ -667,6 +674,7 @@ def get_current_year_projection():
 # Daily weight profile
 # ---------------------------------------
 
+@lru_cache(maxsize=1)
 def build_daily_day_weight_profile():
     daily_df = load_daily_enrollment_data()
 
@@ -848,6 +856,7 @@ def get_forecast_history_months():
 # Daily pace tracking
 # ---------------------------------------
 
+@lru_cache(maxsize=64)
 def get_daily_pace(month=None, program="All Programs"):
 
     # ---------------------------------------
