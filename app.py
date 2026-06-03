@@ -10,7 +10,8 @@ from forecast import (
     get_forecast_history_months,
     get_eligible_programs,
     get_forecast_overview,
-    backfill_program_forecast_history
+    backfill_program_forecast_history,
+    clear_forecast_cache
 )
 
 
@@ -97,4 +98,8 @@ def backfill_program_forecast(
 ):
     return backfill_program_forecast_history(month=month)
 
+
+@app.get("/clear-cache")
+def clear_cache():
+    return clear_forecast_cache()
 
