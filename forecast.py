@@ -920,7 +920,11 @@ def get_forecast_history_months():
 # ---------------------------------------
 
 @lru_cache(maxsize=64)
-def get_daily_pace(month=None, program="All Programs"):
+def get_daily_pace(
+    month=None,
+    program="All Programs",
+    degree_type="All"
+):
 
     # ---------------------------------------
     # Determine forecast month
@@ -940,7 +944,7 @@ def get_daily_pace(month=None, program="All Programs"):
     # Forecast data
     # ---------------------------------------
 
-    if program == "All Programs":
+    if program == "All Programs" and degree_type == "All":
 
         if month is None:
             monthly_forecast_df = forecast_next_6_months()
@@ -999,6 +1003,51 @@ def get_daily_pace(month=None, program="All Programs"):
                 )
             )
 
+    elif program == "All Programs" and degree_type != "All":
+
+        monthly_forecast_df = forecast_next_6_months()
+
+        target_row = monthly_forecast_df[
+            monthly_forecast_df["month"].dt.to_period("M")
+            == current_month.to_period("M")
+        ]
+
+        if len(target_row) == 0:
+            raise ValueError(
+                f"No model forecast found for {current_month}"
+            )
+
+        total_monthly_forecast = int(
+            target_row["forecasted_enrollments"].iloc[0]
+        )
+
+        shares = get_program_shares()
+
+        degree_programs = get_programs_by_degree_type(
+            degree_type
+        )
+
+        degree_share = (
+            shares[
+                shares["program"].isin(degree_programs)
+            ]["share"]
+            .sum()
+        )
+
+        monthly_forecast = int(
+            round(total_monthly_forecast * degree_share)
+        )
+
+        daily_day_weight_profile = (
+            build_daily_day_weight_profile()
+        )
+
+        forecast_daily = create_daily_forecast_allocation(
+            forecast_month=current_month,
+            monthly_forecast=monthly_forecast,
+            daily_day_weight_profile=daily_day_weight_profile
+        )
+
     else:
         forecast_daily = get_program_daily_forecast(
             forecast_month=current_month,
@@ -1021,7 +1070,18 @@ def get_daily_pace(month=None, program="All Programs"):
 
     actual_daily = load_daily_enrollment_data()
 
-    if program != "All Programs":
+    if degree_type != "All" and program == "All Programs":
+
+        degree_programs = get_programs_by_degree_type(
+            degree_type
+        )
+
+        actual_daily = actual_daily[
+            actual_daily["program"].isin(degree_programs)
+        ].copy()
+
+    elif program != "All Programs":
+
         actual_daily = actual_daily[
             actual_daily["program"] == program
         ].copy()
@@ -1038,6 +1098,7 @@ def get_daily_pace(month=None, program="All Programs"):
         .sort_values("date")
         .reset_index(drop=True)
     )
+
     # ---------------------------------------
     # Merge forecast and actuals
     # ---------------------------------------
@@ -1207,6 +1268,7 @@ def get_daily_pace(month=None, program="All Programs"):
 
     return {
         "month": str(current_month.date()),
+        "degree_type": degree_type,
         "program": program,
         "monthly_forecast": monthly_forecast,
         "latest_actual_date": str(latest_actual_date.date()),
