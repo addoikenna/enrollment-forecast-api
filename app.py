@@ -51,12 +51,14 @@ def get_forecast(
     
 @app.get("/daily-pace")
 def daily_pace(
-    month: str | None = Query(default=None),
-    program: str = Query(default="All Programs")
+    month: str | None = None,
+    program: str = Query(default="All Programs"),
+    degree_type: str = Query(default="All")
 ):
     return get_daily_pace(
         month=month,
-        program=program
+        program=program,
+        degree_type=degree_type
     )
 
 
