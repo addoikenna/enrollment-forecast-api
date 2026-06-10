@@ -1005,58 +1005,147 @@ def get_daily_pace(
 
     elif program == "All Programs" and degree_type != "All":
 
-        monthly_forecast_df = forecast_next_6_months()
-
-        target_row = monthly_forecast_df[
-            monthly_forecast_df["month"].dt.to_period("M")
-            == current_month.to_period("M")
-        ]
-
-        if len(target_row) == 0:
-            raise ValueError(
-                f"No model forecast found for {current_month}"
-            )
-
-        total_monthly_forecast = int(
-            target_row["forecasted_enrollments"].iloc[0]
-        )
-
-        shares = get_program_shares()
-
         degree_programs = get_programs_by_degree_type(
             degree_type
         )
 
-        degree_share = (
-            shares[
-                shares["program"].isin(degree_programs)
-            ]["share"]
-            .sum()
-        )
+        if month is None:
+            monthly_forecast_df = forecast_next_6_months()
 
-        monthly_forecast = int(
-            round(total_monthly_forecast * degree_share)
-        )
+            target_row = monthly_forecast_df[
+                monthly_forecast_df["month"].dt.to_period("M")
+                == current_month.to_period("M")
+            ]
 
-        daily_day_weight_profile = (
-            build_daily_day_weight_profile()
-        )
+            if len(target_row) == 0:
+                raise ValueError(
+                    f"No model forecast found for {current_month}"
+                )
 
-        forecast_daily = create_daily_forecast_allocation(
-            forecast_month=current_month,
-            monthly_forecast=monthly_forecast,
-            daily_day_weight_profile=daily_day_weight_profile
-        )
+            total_monthly_forecast = int(
+                target_row["forecasted_enrollments"].iloc[0]
+            )
+
+            shares = get_program_shares()
+
+            degree_share = (
+                shares[
+                    shares["program"].isin(degree_programs)
+                ]["share"]
+                .sum()
+            )
+
+            monthly_forecast = int(
+                round(total_monthly_forecast * degree_share)
+            )
+
+            daily_day_weight_profile = (
+                build_daily_day_weight_profile()
+            )
+
+            forecast_daily = create_daily_forecast_allocation(
+                forecast_month=current_month,
+                monthly_forecast=monthly_forecast,
+                daily_day_weight_profile=daily_day_weight_profile
+            )
+
+        else:
+            history_df = load_forecast_history()
+
+            forecast_daily = history_df[
+                (
+                    history_df["forecast_month"].dt.to_period("M")
+                    == current_month.to_period("M")
+                )
+                & (
+                    history_df["program"].isin(degree_programs)
+                )
+            ].copy()
+
+            if len(forecast_daily) == 0:
+                raise ValueError(
+                    f"No forecast history found for {month} and {degree_type}"
+                )
+
+            forecast_daily = forecast_daily.rename(columns={
+                "forecast_date": "date"
+            })
+
+            monthly_forecast = int(
+                forecast_daily[
+                    ["program", "monthly_forecast"]
+                ]
+                .drop_duplicates()
+                ["monthly_forecast"]
+                .sum()
+            )
+
+            forecast_daily = (
+                forecast_daily
+                .groupby("date", as_index=False)
+                .agg({
+                    "forecasted_enrollments": "sum",
+                    "month_type": "first"
+                })
+            )
+
+            forecast_daily["month"] = current_month
+
+            forecast_daily["week_start"] = (
+                forecast_daily["date"]
+                - pd.to_timedelta(
+                    forecast_daily["date"].dt.weekday,
+                    unit="D"
+                )
+            )
 
     else:
-        forecast_daily = get_program_daily_forecast(
-            forecast_month=current_month,
-            program=program
-        )
 
-        monthly_forecast = int(
-            forecast_daily["forecasted_enrollments"].sum()
-        )
+        if month is None:
+            forecast_daily = get_program_daily_forecast(
+                forecast_month=current_month,
+                program=program
+            )
+
+            monthly_forecast = int(
+                forecast_daily["forecasted_enrollments"].sum()
+            )
+
+        else:
+            history_df = load_forecast_history()
+
+            forecast_daily = history_df[
+                (
+                    history_df["forecast_month"].dt.to_period("M")
+                    == current_month.to_period("M")
+                )
+                & (
+                    history_df["program"] == program
+                )
+            ].copy()
+
+            if len(forecast_daily) == 0:
+                raise ValueError(
+                    f"No forecast history found for {month} and {program}"
+                )
+
+            monthly_forecast = int(
+                forecast_daily["monthly_forecast"].iloc[0]
+            )
+
+            forecast_daily = forecast_daily.rename(columns={
+                "forecast_date": "date"
+            })
+
+            forecast_daily["month"] = current_month
+
+            forecast_daily["week_start"] = (
+                forecast_daily["date"]
+                - pd.to_timedelta(
+                    forecast_daily["date"].dt.weekday,
+                    unit="D"
+                )
+            )
 
     forecast_daily = (
         forecast_daily
