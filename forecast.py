@@ -406,7 +406,7 @@ def get_forecast_overview(
     forecast_df["month"] = forecast_df["month"].astype(str)
 
     return {
-      "forecast_horizon": "next_6_months",
+      "forecast_horizon": "next_12_months",
       "degree_type": degree_type,
       "program": program,
       "data": forecast_df.to_dict(orient="records"),
@@ -662,7 +662,12 @@ def forecast_next_months(periods=6):
 
 
 def forecast_next_6_months():
-    return forecast_next_months(periods=6)
+    """
+    Backward-compatible wrapper.
+    Despite the name, this now returns the next 12 months forecast.
+    This keeps existing app logic working without changing function names.
+    """
+    return forecast_next_months(periods=12)
 
 
 def forecast_next_12_months():
@@ -1670,7 +1675,7 @@ def clear_forecast_cache():
 # ---------------------------------------
 
 if __name__ == "__main__":
-    print("Rolling 6-month forecast:")
+    print("Rolling 12-month forecast:")
     print(forecast_next_6_months())
 
     print("\nCurrent-year projection:")
