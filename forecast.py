@@ -1500,6 +1500,8 @@ def save_daily_forecast_history():
             "status": "skipped",
             "message": "Forecast history already exists for all eligible programs.",
             "rows_sent": 0,
+            "forecast_month": str(current_month.date()),
+            "monthly_forecast": total_monthly_forecast,
             "saved_programs": saved_programs,
             "skipped_programs": skipped_programs,
             "snapshot_date": snapshot_date
@@ -1520,6 +1522,8 @@ def save_daily_forecast_history():
         "status_code": response.status_code,
         "response": response.text,
         "rows_sent": len(rows),
+        "forecast_month": str(current_month.date()),
+        "monthly_forecast": total_monthly_forecast,
         "saved_programs": saved_programs,
         "skipped_programs": skipped_programs,
         "snapshot_date": snapshot_date
